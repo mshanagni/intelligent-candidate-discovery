@@ -8,6 +8,64 @@ import pandas as pd
 import json, csv, io, re, math
 from datetime import datetime
 
+# ── Company prestige tiers ────────────────────────────────────────────────────
+CO_TIER1 = frozenset(["google","meta","amazon","microsoft","apple","netflix","deepmind","openai",
+                       "anthropic","nvidia","linkedin","uber","airbnb","stripe","databricks"])
+CO_TIER2 = frozenset(["flipkart","zomato","swiggy","cred","meesho","razorpay","phonepe","paytm",
+                       "ola","sarvam","adobe","atlassian","salesforce","twitter","bytedance",
+                       "rephrase","freshworks","cleartax","zerodha","groww","nykaa","sharechat","juspay"])
+CO_TIER3 = frozenset(["byju","unacademy","vedantu","snapdeal","indiamart","justdial","makemytrip","oyo"])
+ELITE_EDU = frozenset(["iit","iim","bits","nit","iisc","iiser","iiit","stanford","mit","cmu",
+                        "carnegie mellon","berkeley","oxford","cambridge","eth zurich","waterloo",
+                        "toronto","montreal","nyu","columbia"])
+_METRIC_RE = re.compile(
+    r'\d+[%xX×]\s*(?:improvement|reduction|increase|faster|lift|gain)|'
+    r'(?:million|billion|crore|lakh)\s*(?:users|requests|queries|impressions)|'
+    r'p\d{2}\s*latency|\d+\s*ms\s*(?:latency|p99)|serving\s*\d+',
+    re.IGNORECASE
+)
+_SENIORITY = {"intern":0,"junior":1,"associate":2,"mid":3,"senior":4,"lead":5,"staff":6,"principal":7,"director":8,"vp":9}
+
+def _company_prestige(company_names):
+    best = 0.4
+    for cn in company_names:
+        if any(t in cn for t in CO_TIER1): best = max(best, 1.00)
+        elif any(t in cn for t in CO_TIER2): best = max(best, 0.85)
+        elif any(t in cn for t in CO_TIER3): best = max(best, 0.70)
+        else: best = max(best, 0.60)
+    return best
+
+def _education_score(edu):
+    if not edu: return 0.5
+    for e in edu:
+        inst = (e.get("institution") or e.get("school") or e.get("degree") or "").lower()
+        if any(u in inst for u in ELITE_EDU): return 1.0
+    return 0.55
+
+def _quantified_impact(career):
+    hits = sum(1 for j in career if _METRIC_RE.search(j.get("description","") or ""))
+    return min(1.0, hits / 3)
+
+def _career_progression(career_titles):
+    if len(career_titles) < 2: return 0.6
+    levels = []
+    for t in career_titles:
+        for kw, lv in _SENIORITY.items():
+            if kw in t: levels.append(lv); break
+        else: levels.append(3)
+    mid = len(levels) // 2
+    early = sum(levels[:mid]) / max(mid, 1)
+    late  = sum(levels[mid:]) / max(len(levels)-mid, 1)
+    if late > early + 0.5: return 1.0
+    if late < early - 0.5: return 0.3
+    return 0.6
+
+def _skill_recency(career, skill_map):
+    if not career: return 1.0
+    recent_text = " ".join((j.get("description","") or "").lower() for j in career[-2:])
+    high_val = sum(1 for sk, wt in skill_map.items() if wt >= 2.0 and sk in recent_text)
+    return min(1.0, 0.7 + high_val * 0.1)
+
 # Optional speedup
 try:
     import orjson
@@ -285,17 +343,28 @@ def score_candidate(c: dict, weights: dict, cfg: dict) -> dict:
         group_best[wt] = max(group_best.get(wt, 0.0), raw)
         matched_skills.append(sk.get("name") or nm)
     skill_score = min(1.0, sum(wt * best for wt, best in group_best.items()) / cfg["max_skill_w"])
+    # Skill recency boost
+    skill_score = min(1.0, skill_score * _skill_recency(career, cfg["skill_map"]))
 
-    # ── Career quality
-    yoe_ideal = (cfg["min_yoe"] or 4) + round(((cfg["max_yoe"] if cfg["max_yoe"] < 99 else 8) - (cfg["min_yoe"] or 4)) * 0.5)
-    yoe_s     = (1.0 if abs(yoe - yoe_ideal) <= 1
-                 else 0.75 if yoe >= (cfg["min_yoe"] or 4)
-                 else 0.5  if yoe >= (cfg["min_yoe"] or 4) - 1
-                 else 0.3)
-    company_s  = 1.0 - (consulting_m / total_m * 0.6 if total_m else 0.3)
-    prod_s     = min(1.0, prod_hits / 12)
-    domain_m_  = min(1.0, (prod_m / max(total_m, 1)) * 2)
-    career_score = (0.30 * yoe_s + 0.25 * company_s + 0.25 * prod_s + 0.20 * domain_m_) * (0.55 if is_pure_research else 1.0)
+    # ── Career quality (enhanced)
+    edu        = c.get("education") or []
+    yoe_ideal  = (cfg["min_yoe"] or 4) + round(((cfg["max_yoe"] if cfg["max_yoe"] < 99 else 8) - (cfg["min_yoe"] or 4)) * 0.5)
+    yoe_s      = (1.0 if abs(yoe - yoe_ideal) <= 1
+                  else 0.75 if yoe >= (cfg["min_yoe"] or 4)
+                  else 0.5  if yoe >= (cfg["min_yoe"] or 4) - 1
+                  else 0.3)
+    company_s   = 1.0 - (consulting_m / total_m * 0.6 if total_m else 0.3)
+    prestige_s  = _company_prestige(company_names)
+    prod_s      = min(1.0, prod_hits / 12)
+    impact_s    = _quantified_impact(career)
+    progression_s= _career_progression(career_titles)
+    edu_s       = _education_score(edu)
+    domain_m_   = min(1.0, (prod_m / max(total_m, 1)) * 2)
+    career_score = (
+        0.20 * yoe_s + 0.15 * company_s + 0.15 * prestige_s +
+        0.15 * prod_s + 0.10 * impact_s + 0.10 * progression_s +
+        0.10 * edu_s + 0.05 * domain_m_
+    ) * (0.55 if is_pure_research else 1.0)
 
     # ── Semantic fit
     words_set = set(full_text.split())
@@ -514,11 +583,11 @@ with st.sidebar:
     c1, c2 = st.columns(2)
     with c1:
         w_role   = st.slider("Role",      0, 70, 20)
-        w_career = st.slider("Career",    0, 70, 20)
+        w_career = st.slider("Career",    0, 70, 25)
         w_behav  = st.slider("Behavioral",0, 70, 10)
     with c2:
-        w_tech   = st.slider("Skills",    0, 70, 30)
-        w_sem    = st.slider("Semantic",  0, 70, 15)
+        w_tech   = st.slider("Skills",    0, 70, 28)
+        w_sem    = st.slider("Semantic",  0, 70, 12)
         w_loc    = st.slider("Location",  0, 70,  5)
 
     total_w = w_role + w_tech + w_career + w_sem + w_behav + w_loc

@@ -387,6 +387,72 @@ const STOPWORDS=new Set('a an the is are was were be been being have has had do 
 const TODAY=new Date();
 const PROF_W={expert:1.0,advanced:0.85,intermediate:0.6,beginner:0.3};
 
+// ── Company prestige tiers ────────────────────────────────────────────────────
+const CO_TIER1=new Set(['google','meta','amazon','microsoft','apple','netflix','deepmind','openai','anthropic','nvidia','linkedin','uber','airbnb','stripe','databricks']);
+const CO_TIER2=new Set(['flipkart','zomato','swiggy','cred','meesho','razorpay','phonepe','paytm','ola','sarvam','adobe','atlassian','salesforce','twitter','bytedance','rephrase','freshworks','cleartax','zerodha','groww','nykaa','sharechat','juspay','healthifyme']);
+const CO_TIER3=new Set(['byju','unacademy','vedantu','snapdeal','indiamart','justdial','makemytrip','oyo','ixigo']);
+const CO_CONSULTING=new Set(['tcs','infosys','wipro','accenture','cognizant','capgemini','hcl','tech mahindra','mindtree','mphasis','ltimindtree','hexaware','kpit','persistent systems']);
+
+// ── Elite universities ────────────────────────────────────────────────────────
+const ELITE_EDU=new Set(['iit','iim','bits','nit','iisc','iiser','iiit','stanford','mit','cmu','carnegie mellon','berkeley','oxford','cambridge','eth zurich','waterloo','toronto','montreal','nyu','columbia']);
+
+// ── Quantified impact pattern ─────────────────────────────────────────────────
+const METRIC_RE=/\d+[%xX×]\s*(?:improvement|reduction|increase|faster|lift|gain)|(?:million|billion|crore|lakh)\s*(?:users|requests|queries|impressions)|p\d{2}\s*latency|\d+\s*ms\s*(?:latency|p99)|serving\s*\d+|ranked\s*\d+/i;
+
+// ── Seniority levels ──────────────────────────────────────────────────────────
+const SENIORITY_MAP={intern:0,junior:1,associate:2,mid:3,senior:4,lead:5,staff:6,principal:7,director:8,vp:9};
+
+// ── New scoring helpers ───────────────────────────────────────────────────────
+function companyPrestige(companyNames){
+  let best=0.4;
+  for(const cn of companyNames){
+    const t1=[...CO_TIER1].some(t=>cn.includes(t));
+    const t2=[...CO_TIER2].some(t=>cn.includes(t));
+    const t3=[...CO_TIER3].some(t=>cn.includes(t));
+    const cons=[...CO_CONSULTING].some(t=>cn.includes(t));
+    if(t1) best=Math.max(best,1.00);
+    else if(t2) best=Math.max(best,0.85);
+    else if(t3) best=Math.max(best,0.70);
+    else if(!cons) best=Math.max(best,0.60);
+  }
+  return best;
+}
+
+function educationScore(edu){
+  if(!edu||!edu.length) return 0.5;
+  for(const e of edu){
+    const inst=((e.institution||e.school||e.degree||'')).toLowerCase();
+    if([...ELITE_EDU].some(u=>inst.includes(u))) return 1.0;
+  }
+  return 0.55;
+}
+
+function quantifiedImpact(career){
+  const hits=career.filter(j=>METRIC_RE.test(j.description||'')).length;
+  return Math.min(1.0,hits/3);
+}
+
+function careerProgression(careerTitles){
+  if(careerTitles.length<2) return 0.6;
+  const levels=careerTitles.map(t=>{
+    for(const[kw,lv] of Object.entries(SENIORITY_MAP)){if(t.includes(kw)) return lv;}
+    return 3;
+  });
+  const mid=Math.floor(levels.length/2);
+  const early=levels.slice(0,mid).reduce((a,b)=>a+b,0)/Math.max(mid,1);
+  const late=levels.slice(mid).reduce((a,b)=>a+b,0)/Math.max(levels.length-mid,1);
+  if(late>early+0.5) return 1.0;
+  if(late<early-0.5) return 0.3;
+  return 0.6;
+}
+
+function skillRecencyBoost(career,skillMap){
+  if(!career.length) return 1.0;
+  const recentText=career.slice(-2).map(j=>(j.description||'').toLowerCase()).join(' ');
+  const highVal=Object.entries(skillMap).filter(([sk,wt])=>wt>=2.0&&recentText.includes(sk)).length;
+  return Math.min(1.0,0.7+highVal*0.1);
+}
+
 // ════════════════════════════════════════════════════════════
 // JD PARSER
 // ════════════════════════════════════════════════════════════
@@ -675,14 +741,25 @@ function scoreCandidate(c, weights){
   for(const[wt,best] of Object.entries(groupBest)) skillScore+=parseFloat(wt)*best;
   skillScore=Math.min(1.0,skillScore/cfg.maxSkillW);
 
-  // ── Career Quality
+  // ── Skill recency boost (apply after base skill score)
+  skillScore=Math.min(1.0,skillScore*skillRecencyBoost(career,cfg.skillMap));
+
+  // ── Career Quality (enhanced with prestige, education, impact, progression)
   const yoeMin=cfg.minYoe||4,yoeMax=cfg.maxYoe||99;
   const yoeIdeal=yoeMin+Math.round((yoeMax-yoeMin)*0.5);
   const yoeS=yoe>=yoeIdeal-1&&yoe<=yoeIdeal+2?1.0:yoe>=yoeMin&&yoe<yoeIdeal?0.75:yoe>yoeIdeal+2&&yoe<=yoeIdeal+5?0.7:yoe>=yoeMin-1&&yoe<yoeMin?0.5:0.3;
   const companyS=1.0-(totalM?consultingM/totalM:0.3)*0.6;
+  const prestigeS=companyPrestige(companyNames);
   const prodS=Math.min(1.0,prodHits/12);
+  const impactS=quantifiedImpact(career);
+  const progressionS=careerProgression(careerTitles);
+  const eduS=educationScore(c.education||[]);
   const domainM=Math.min(1.0,(prodM/Math.max(totalM,1))*2);
-  const careerScore=(0.30*yoeS+0.25*companyS+0.25*prodS+0.20*domainM)*(isPureResearch?0.55:1.0);
+  const careerScore=(
+    0.20*yoeS + 0.15*companyS + 0.15*prestigeS +
+    0.15*prodS + 0.10*impactS + 0.10*progressionS +
+    0.10*eduS  + 0.05*domainM
+  )*(isPureResearch?0.55:1.0);
 
   // ── Semantic Fit
   const words=new Set(fullText.split(/\s+/));
@@ -738,9 +815,9 @@ let rawCandidates=[],allResults=[],sortCol='rank',sortAsc=true,selectedId=null;
 
 const DIMS=[
   {key:'role',    label:'Role legitimacy', def:20},
-  {key:'tech',    label:'Technical skills',def:30},
-  {key:'career',  label:'Career quality',  def:20},
-  {key:'semantic',label:'Semantic fit',    def:15},
+  {key:'tech',    label:'Technical skills',def:28},
+  {key:'career',  label:'Career quality',  def:25},
+  {key:'semantic',label:'Semantic fit',    def:12},
   {key:'behav',   label:'Behavioral',      def:10},
   {key:'loc',     label:'Location',        def:5},
 ];
