@@ -1,0 +1,25 @@
+team_name: "Team Shanmugam"
+primary_contact_name: "Shanmugam Marimuthu"
+primary_contact_email: "mshanagni@gmail.com"
+
+github_repository_url: "https://github.com/mshanagni/ai-consulting-portfolio"
+
+ai_tools_declared:
+  - Claude
+
+compute_environment_summary: >
+  Python 3.11, CPU only, ~31s wall-clock for 100K candidates.
+  orjson for fast JSON parsing. No GPU, no network at ranking time.
+
+methodology_summary: >
+  Multi-signal scoring engine with 6 weighted dimensions: role legitimacy (20%),
+  technical skills (30%), career quality (20%), semantic fit (15%),
+  behavioral signals (10%), location/logistics (5%). Hard red-flag multipliers
+  (0.05x–0.35x) suppress non-technical roles, pure-consulting careers, and
+  outside-India candidates. Honeypot detection via timeline inconsistency checks.
+  No embeddings or LLM calls at inference — fast set-intersection against
+  JD-derived vocabulary for semantic matching. Runs in ~31s CPU on 100K candidates.
+
+team_members:
+  - name: "Shanmugam Marimuthu"
+    email: "mshanagni@gmail.com"

@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intelligent Candidate Ranker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg2:#f7f7f5;--bg3:#f0efeb;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:rgba(0,0,0,0.12);--border2:rgba(0,0,0,0.22);
+  --green-bg:#eaf3de;--green-text:#3b6d11;
+  --blue-bg:#e6f1fb;--blue-text:#185fa5;
+  --amber-bg:#faeeda;--amber-text:#854f0b;
+  --red-bg:#fcebeb;--red-text:#a32d2d;
+  --r:8px;--rl:12px;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1a1a1a;--bg2:#242424;--bg3:#2c2c2a;
+    --text:#f0f0f0;--text2:#aaa;--text3:#666;
+    --border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.22);
+    --green-bg:#27500a;--green-text:#c0dd97;
+    --blue-bg:#0c447c;--blue-text:#b5d4f4;
+    --amber-bg:#633806;--amber-text:#fac775;
+    --red-bg:#791f1f;--red-text:#f7c1c1;
+  }
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.page{max-width:1140px;margin:0 auto;padding:1.5rem}
+h1{font-size:20px;font-weight:500}
+p.sub{font-size:13px;color:var(--text2);margin-top:3px}
+.header{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:1rem;border-bottom:0.5px solid var(--border);margin-bottom:1.5rem}
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:500}
+.b-green{background:var(--green-bg);color:var(--green-text)}
+.b-blue{background:var(--blue-bg);color:var(--blue-text)}
+.b-amber{background:var(--amber-bg);color:var(--amber-text)}
+.b-red{background:var(--red-bg);color:var(--red-text)}
+.b-gray{background:var(--bg3);color:var(--text2)}
+
+/* Steps */
+.steps{display:flex;gap:6px;margin-bottom:1.5rem;flex-wrap:wrap}
+.step-pill{padding:5px 14px;border-radius:999px;font-size:12px;border:0.5px solid var(--border2);cursor:pointer;background:var(--bg);color:var(--text2);transition:all 0.15s}
+.step-pill.active{background:var(--text);color:var(--bg);border-color:transparent}
+.step-pill.done{background:var(--green-bg);color:var(--green-text);border-color:transparent}
+
+/* Cards */
+.card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+.card-title{font-size:11px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:680px){.two-col{grid-template-columns:1fr}}
+
+/* Inputs */
+textarea,input[type=text],select{width:100%;padding:9px 11px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);font-family:inherit;resize:vertical}
+textarea:focus,input[type=text]:focus,select:focus{outline:none;border-color:var(--text)}
+.jd-textarea{min-height:160px;font-size:13px;line-height:1.6}
+.field-label{font-size:12px;color:var(--text2);margin-bottom:5px;display:block}
+
+/* Drop zone */
+.drop-zone{border:1.5px dashed var(--border2);border-radius:var(--r);padding:1.25rem;text-align:center;cursor:pointer;transition:background 0.15s}
+.drop-zone:hover,.drop-zone.drag{background:var(--bg2)}
+.drop-zone input{display:none}
+.drop-zone-icon{font-size:28px;margin-bottom:6px}
+.drop-zone p{font-size:13px;color:var(--text2)}
+.drop-zone small{font-size:11px;color:var(--text3);display:block;margin-top:3px}
+
+/* JD chips */
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.chip{font-size:11px;padding:2px 9px;border-radius:999px;background:var(--bg2);border:0.5px solid var(--border);color:var(--text2)}
+.chip.hi{background:var(--blue-bg);color:var(--blue-text);border-color:transparent}
+
+/* Sliders */
+.slider-row{margin-bottom:11px}
+.slider-meta{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+.slider-meta span:last-child{font-weight:500;color:var(--text)}
+input[type=range]{width:100%;accent-color:var(--text)}
+.wt-status{font-size:11px;text-align:right;margin-top:4px}
+.wt-ok{color:var(--green-text)} .wt-bad{color:var(--red-text)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:0.5px solid var(--border2);border-radius:var(--r);background:transparent;font-size:13px;cursor:pointer;color:var(--text);font-family:inherit;transition:background 0.1s}
+.btn:hover{background:var(--bg2)} .btn:active{transform:scale(0.98)}
+.btn-primary{background:var(--text);color:var(--bg);border-color:transparent;justify-content:center}
+.btn-primary:hover{opacity:0.85;background:var(--text)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-full{width:100%;padding:10px}
+
+/* Progress */
+.prog-wrap{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:10px}
+.prog-fill{height:100%;background:var(--text);transition:width 0.15s;width:0}
+.status{font-size:12px;color:var(--text2);margin-top:6px;min-height:18px}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--bg2);border-radius:var(--r);padding:11px 13px}
+.stat-label{font-size:11px;color:var(--text2);margin-bottom:3px}
+.stat-val{font-size:22px;font-weight:500}
+
+/* Toolbar */
+.toolbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.toolbar input,.toolbar select{flex:1;min-width:140px;padding:7px 10px;font-size:13px}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;border:0.5px solid var(--border);border-radius:var(--rl)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--bg2);padding:8px 10px;text-align:left;font-size:11px;font-weight:500;color:var(--text2);cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:0.03em;white-space:nowrap}
+th:hover{color:var(--text)}
+td{padding:8px 10px;border-top:0.5px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+tr:hover td{background:var(--bg2)}
+tr.sel td{background:var(--blue-bg)!important}
+
+/* Detail */
+.detail{border:0.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-top:1rem}
+.detail-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem;gap:1rem}
+.detail-name{font-size:16px;font-weight:500}
+.detail-sub{font-size:13px;color:var(--text2);margin-top:3px}
+.score-big{font-size:30px;font-weight:500;text-align:right}
+.score-lbl{font-size:11px;color:var(--text2);text-align:right}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media(max-width:600px){.detail-grid{grid-template-columns:1fr}}
+.sec-title{font-size:11px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:9px}
+.bar-row{margin-bottom:8px}
+.bar-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:3px}
+.bar-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;background:var(--text)}
+.info-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:0.5px solid var(--border)}
+.info-lbl{color:var(--text2)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.tag{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--bg2);border:0.5px solid var(--border);color:var(--text2)}
+.flag-tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--amber-bg);color:var(--amber-text);margin-right:4px;margin-bottom:4px;display:inline-block}
+.domain-tag{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--blue-bg);color:var(--blue-text);display:inline-block;margin-right:6px}
+
+/* Domain colors */
+.dom-icon{font-size:32px}
+.jd-parsed-card{background:var(--bg2);border-radius:var(--r);padding:12px 14px;margin-top:10px;font-size:13px}
+
+.empty{padding:3rem;text-align:center;color:var(--text3)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.hidden{display:none!important}
+hr.divider{border:none;border-top:0.5px solid var(--border);margin:1rem 0}
+code{font-family:monospace;font-size:11px}
+.footer{text-align:center;font-size:12px;color:var(--text3);padding:2rem 0 1rem;margin-top:2rem;border-top:0.5px solid var(--border)}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="header">
+  <div>
+    <h1>Intelligent Candidate Ranker</h1>
+    <p class="sub">Dynamic multi-signal ranking · works for any role & JD · no API calls</p>
+  </div>
+  <span class="badge b-gray" id="domainBadge">No JD yet</span>
+</div>
+
+<!-- Step pills -->
+<div class="steps">
+  <span class="step-pill active" id="pill1" onclick="goStep(1)">1 · Job Description</span>
+  <span class="step-pill" id="pill2" onclick="goStep(2)">2 · Candidates</span>
+  <span class="step-pill" id="pill3" onclick="goStep(3)">3 · Weights</span>
+  <span class="step-pill" id="pill4" onclick="goStep(4)">4 · Results</span>
+</div>
+
+<!-- ── STEP 1: JD ── -->
+<div id="step1">
+  <div class="card">
+    <div class="card-title">Paste or upload the Job Description</div>
+    <textarea class="jd-textarea" id="jdText" placeholder="Paste the full job description here — title, responsibilities, required skills, location…" oninput="jdChanged()"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <button class="btn btn-sm" onclick="document.getElementById('jdFile').click()">Upload .txt / .md file</button>
+      <input type="file" id="jdFile" accept=".txt,.md" style="display:none" onchange="loadJDFile(event)">
+      <span class="status" id="jdStatus"></span>
+    </div>
+    <div id="jdParsed" class="hidden jd-parsed-card">
+      <div style="margin-bottom:8px">
+        <span id="jdDomainTag" class="domain-tag"></span>
+        <span id="jdYoeReq" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Detected skills &amp; keywords</div>
+      <div class="chips" id="jdChips"></div>
+    </div>
+  </div>
+  <button class="btn btn-primary" style="width:200px" onclick="goStep(2)" id="nextTo2" disabled>Next: Candidates →</button>
+</div>
+
+<!-- ── STEP 2: Candidates ── -->
+<div id="step2" class="hidden">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">Upload Candidates File</div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('candFile').click()">
+        <div class="drop-zone-icon">📂</div>
+        <p>Drop file here or click to browse</p>
+        <small>.json · .jsonl · .csv</small>
+        <input type="file" id="candFile" accept=".json,.jsonl,.csv" onchange="loadCandFile(event)">
+      </div>
+      <div id="candLoaded" class="hidden" style="margin-top:8px;font-size:12px;color:var(--green-text);background:var(--green-bg);padding:4px 10px;border-radius:999px;text-align:center"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">CSV Column Mapping <span style="font-weight:400;font-size:10px;color:var(--text3)">(auto-detected, adjust if needed)</span></div>
+      <div id="csvMapping" class="hidden">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="mappingGrid"></div>
+      </div>
+      <div id="noMappingMsg" style="font-size:13px;color:var(--text3);padding:2rem 0;text-align:center">Upload a CSV file to see column mapping</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-sm" onclick="goStep(1)">← Back</button>
+    <button class="btn btn-primary" style="width:200px" onclick="goStep(3)" id="nextTo3" disabled>Next: Weights →</button>
+  </div>
+</div>
+
+<!-- ── STEP 3: Weights ── -->
+<div id="step3" class="hidden">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">Scoring Weights</div>
+      <div id="sliders"></div>
+      <div class="wt-status" id="wtStatus"></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn btn-sm" onclick="resetWeights()" style="flex:1">Reset defaults</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Scoring Rules Preview</div>
+      <div id="rulesPreview" style="font-size:12px;line-height:1.8;color:var(--text2)"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button class="btn btn-sm" onclick="goStep(2)">← Back</button>
+    <button class="btn btn-primary" style="width:200px" onclick="runRanking()" id="runBtn">▶ Run Ranking</button>
+  </div>
+  <div class="prog-wrap hidden" id="progWrap"><div class="prog-fill" id="progFill"></div></div>
+  <div class="status" id="runStatus"></div>
+</div>
+
+<!-- ── STEP 4: Results ── -->
+<div id="step4" class="hidden">
+  <div class="stats" id="statsGrid"></div>
+  <div class="toolbar">
+    <input type="text" id="filterText" placeholder="Filter by title or company…" oninput="applyFilter()">
+    <select id="filterTier" onchange="applyFilter()">
+      <option value="">All tiers</option>
+      <option value="strong">Strong match</option>
+      <option value="moderate">Moderate</option>
+      <option value="weak">Weak match</option>
+      <option value="excluded">Excluded</option>
+    </select>
+    <select id="filterOTW" onchange="applyFilter()">
+      <option value="">Any availability</option>
+      <option value="1">Open to work</option>
+    </select>
+    <button class="btn btn-sm" onclick="goStep(3)">⚙ Adjust weights</button>
+    <button class="btn btn-sm" onclick="exportCSV()">↓ Export CSV</button>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:40px" onclick="sortBy('rank')"># <span id="s_rank">↑</span></th>
+        <th style="width:110px" onclick="sortBy('id')">ID <span id="s_id"></span></th>
+        <th style="width:140px" onclick="sortBy('name')">Name <span id="s_name"></span></th>
+        <th onclick="sortBy('title')">Title <span id="s_title"></span></th>
+        <th style="width:48px" onclick="sortBy('yoe')">YoE <span id="s_yoe"></span></th>
+        <th style="width:140px" onclick="sortBy('company')">Company <span id="s_company"></span></th>
+        <th style="width:64px" onclick="sortBy('score')">Score <span id="s_score"></span></th>
+        <th style="width:50px;text-align:center">Tier</th>
+        <th style="width:44px;text-align:center">OTW</th>
+      </tr></thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+  <div id="detailPanel" class="hidden detail"></div>
+</div>
+
+<div class="footer">
+  Runs entirely in your browser · No data sent anywhere · Open <code>candidate_ranker.html</code> in Chrome, Edge, or Firefox
+</div>
+</div><!-- end .page -->
+
+<script>
+// ════════════════════════════════════════════════════════════
+// MASTER KNOWLEDGE BASE  (domain-agnostic, used for JD parsing)
+// ════════════════════════════════════════════════════════════
+const DOMAINS = {
+  ml_ai: {
+    label:'ML / AI Engineer', icon:'🤖',
+    keywords:['machine learning','deep learning','neural network','nlp','natural language','computer vision','recommendation','retrieval','ranking','embedding','vector','llm','language model','transformer','bert','gpt','fine-tuning','semantic search','information retrieval','data science','pytorch','tensorflow','hugging face'],
+    skills:{
+      'embeddings':2.5,'sentence-transformers':2.5,'semantic search':2.5,'faiss':2.5,'pinecone':2.5,'weaviate':2.5,'qdrant':2.5,'milvus':2.5,'vector database':2.5,'ann':2.5,
+      'ranking':2.0,'retrieval':2.0,'bm25':2.0,'learning to rank':2.0,'ndcg':2.0,'recommendation systems':2.0,'haystack':2.0,'llamaindex':2.0,
+      'pytorch':1.8,'tensorflow':1.8,'hugging face':1.8,'transformers':1.8,'scikit-learn':1.5,'sklearn':1.5,
+      'python':1.5,'numpy':1.2,'pandas':1.2,'xgboost':1.5,'lightgbm':1.5,
+      'fine-tuning':1.2,'lora':1.2,'rlhf':1.2,'mlflow':1.0,'wandb':1.0,'langchain':0.9,
+    },
+    strong_titles:['ml engineer','machine learning engineer','ai engineer','research scientist','nlp engineer','data scientist','applied scientist','research engineer','recommendation engineer','search engineer','ranking engineer','deep learning engineer','llm engineer','senior ml','senior ai','senior data scientist','principal ml','staff ml'],
+    mod_titles:['software engineer','backend engineer','data engineer','platform engineer','devops','sre'],
+    non_titles:['hr manager','marketing','accountant','graphic designer','customer support','sales','java developer','.net developer','android','ios','frontend','qa engineer'],
+    consulting:['tcs','infosys','wipro','accenture','cognizant','capgemini','hcl','tech mahindra','mindtree','mphasis'],
+  },
+  data_engineering: {
+    label:'Data Engineer', icon:'🔧',
+    keywords:['data pipeline','etl','spark','kafka','airflow','data warehouse','dbt','bigquery','snowflake','redshift','data lake','streaming','batch','data platform','orchestration','dagster'],
+    skills:{
+      'apache spark':2.5,'kafka':2.5,'apache kafka':2.5,'airflow':2.5,'apache airflow':2.5,'dbt':2.5,'flink':2.5,
+      'bigquery':2.0,'snowflake':2.0,'redshift':2.0,'databricks':2.0,'delta lake':2.0,'hive':1.8,
+      'python':1.8,'sql':1.8,'pyspark':2.0,'scala':1.5,'java':1.2,
+      'kubernetes':1.2,'docker':1.2,'terraform':1.0,'aws':1.0,'gcp':1.0,'azure':1.0,
+    },
+    strong_titles:['data engineer','senior data engineer','data platform engineer','etl developer','analytics engineer','data infrastructure','staff data engineer','principal data engineer','lead data engineer'],
+    mod_titles:['software engineer','backend engineer','cloud engineer','platform engineer','sre'],
+    non_titles:['marketing','accountant','hr','sales','qa'],
+    consulting:['tcs','infosys','wipro','accenture','cognizant','capgemini','hcl','tech mahindra'],
+  },
+  backend: {
+    label:'Backend / API Engineer', icon:'⚙️',
+    keywords:['rest api','microservices','distributed systems','backend','server','node.js','spring boot','django','fastapi','golang','java','scala','system design','high availability','low latency'],
+    skills:{
+      'java':2.5,'spring boot':2.5,'go':2.5,'golang':2.5,'python':2.0,'node.js':2.0,'nodejs':2.0,'django':1.8,'fastapi':1.8,'flask':1.5,
+      'microservices':2.0,'rest api':2.0,'grpc':2.0,'kafka':1.5,'redis':1.5,'postgresql':1.5,'mysql':1.5,'mongodb':1.5,
+      'kubernetes':1.8,'docker':1.5,'aws':1.5,'gcp':1.2,'azure':1.2,'terraform':1.2,
+      'distributed systems':2.0,'system design':1.8,'high availability':1.5,
+    },
+    strong_titles:['backend engineer','software engineer','senior software engineer','staff engineer','principal engineer','platform engineer','api engineer','senior backend','lead backend','software developer'],
+    mod_titles:['fullstack','devops','sre','data engineer','cloud engineer'],
+    non_titles:['marketing','hr','sales','accountant','graphic designer','android','ios','qa'],
+    consulting:['tcs','infosys','wipro','accenture','cognizant','capgemini','hcl','tech mahindra'],
+  },
+  frontend: {
+    label:'Frontend / UI Engineer', icon:'🎨',
+    keywords:['react','angular','vue','frontend','ui','ux','javascript','typescript','css','html','web app','single page','responsive','accessibility','performance'],
+    skills:{
+      'react':2.5,'next.js':2.5,'typescript':2.5,'javascript':2.0,'vue':2.0,'angular':2.0,
+      'css':1.5,'html':1.2,'tailwind':1.5,'webpack':1.2,'vite':1.2,'graphql':1.5,'rest api':1.2,
+      'testing library':1.5,'jest':1.2,'cypress':1.2,'playwright':1.2,
+      'figma':1.0,'accessibility':1.5,'performance':1.5,'web vitals':1.5,
+    },
+    strong_titles:['frontend engineer','ui engineer','javascript developer','react developer','web developer','senior frontend','staff frontend','principal frontend','ui developer'],
+    mod_titles:['fullstack','software engineer','mobile developer'],
+    non_titles:['backend','data engineer','ml engineer','marketing','hr','sales'],
+    consulting:['tcs','infosys','wipro','accenture','cognizant'],
+  },
+  devops: {
+    label:'DevOps / SRE / Cloud', icon:'☁️',
+    keywords:['kubernetes','docker','terraform','ci/cd','devops','sre','cloud','aws','gcp','azure','infrastructure','monitoring','observability','helm','gitops','platform engineering'],
+    skills:{
+      'kubernetes':2.5,'helm':2.0,'terraform':2.5,'ansible':2.0,'docker':2.0,
+      'aws':2.0,'gcp':2.0,'azure':2.0,'ci/cd':2.0,'github actions':1.8,'jenkins':1.5,'argocd':2.0,'flux':1.8,
+      'prometheus':1.8,'grafana':1.5,'datadog':1.5,'opentelemetry':1.8,'istio':1.5,
+      'python':1.2,'go':1.5,'bash':1.5,'linux':1.5,
+    },
+    strong_titles:['devops engineer','sre','site reliability engineer','platform engineer','cloud engineer','infrastructure engineer','staff sre','principal devops','lead sre'],
+    mod_titles:['backend engineer','software engineer','data engineer'],
+    non_titles:['marketing','hr','sales','accountant','frontend'],
+    consulting:['tcs','infosys','wipro','accenture','cognizant'],
+  },
+  data_analyst: {
+    label:'Data / BI Analyst', icon:'📊',
+    keywords:['sql','tableau','power bi','looker','excel','analytics','reporting','dashboard','business intelligence','metrics','kpi','a/b test','experimentation','statistics'],
+    skills:{
+      'sql':2.5,'python':2.0,'r':1.8,'tableau':2.5,'power bi':2.5,'looker':2.0,'excel':1.8,'google analytics':1.5,
+      'statistics':2.0,'a/b testing':2.0,'experimentation':2.0,'regression':1.5,'hypothesis testing':1.8,
+      'pandas':1.5,'numpy':1.2,'matplotlib':1.2,'dbt':1.5,'bigquery':1.5,'snowflake':1.2,
+    },
+    strong_titles:['data analyst','senior data analyst','business analyst','bi analyst','analytics engineer','data science analyst','product analyst','growth analyst','marketing analyst'],
+    mod_titles:['data scientist','product manager','software engineer'],
+    non_titles:['hr','accountant','sales','marketing','graphic designer','android'],
+    consulting:['tcs','infosys','wipro','accenture'],
+  },
+  product: {
+    label:'Product Manager', icon:'🗺️',
+    keywords:['product roadmap','user stories','backlog','sprint','stakeholder','go-to-market','product strategy','north star','metrics','okr','agile','scrum','product discovery','customer research'],
+    skills:{
+      'product strategy':2.5,'roadmap':2.5,'agile':2.0,'scrum':2.0,'okrs':2.0,'user research':2.0,'a/b testing':1.8,
+      'sql':1.5,'tableau':1.2,'jira':1.5,'confluence':1.2,'figma':1.2,'analytics':1.5,
+      'go-to-market':1.8,'competitive analysis':1.5,'stakeholder management':2.0,
+    },
+    strong_titles:['product manager','senior product manager','principal pm','director of product','vp product','group pm','associate pm','product lead','head of product'],
+    mod_titles:['program manager','project manager','business analyst','growth manager'],
+    non_titles:['software engineer','data engineer','ml engineer','accountant','hr'],
+    consulting:['mckinsey','bcg','bain','deloitte','accenture'],
+  },
+};
+
+const STOPWORDS=new Set('a an the is are was were be been being have has had do does did will would could should may might must shall can need dare used to am are i we you he she it they them their this that these those of in on at by for with from to into through during before after above below up down out off over under again further then once here there when where why how all both each few more most no nor not only own same so than too very just now'.split(' '));
+const TODAY=new Date();
+const PROF_W={expert:1.0,advanced:0.85,intermediate:0.6,beginner:0.3};
+
+// ════════════════════════════════════════════════════════════
+// JD PARSER
+// ════════════════════════════════════════════════════════════
+let jdConfig=null;
+
+function parseJD(text){
+  const lower=text.toLowerCase();
+  // Detect domain
+  let bestDomain='ml_ai',bestScore=0;
+  for(const [key,dom] of Object.entries(DOMAINS)){
+    let s=dom.keywords.filter(k=>lower.includes(k)).length;
+    if(s>bestScore){bestScore=s;bestDomain=key;}
+  }
+  const dom=DOMAINS[bestDomain];
+
+  // Extract JD skills (all that appear in text)
+  const jdSkillMap={};
+  for(const [sk,wt] of Object.entries(dom.skills)){
+    if(lower.includes(sk)) jdSkillMap[sk]=wt;
+  }
+  // If very few skills detected, add domain's top-5 by weight
+  if(Object.keys(jdSkillMap).length<3){
+    const top=Object.entries(dom.skills).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    top.forEach(([k,v])=>jdSkillMap[k]=v);
+  }
+
+  // Build JD_WORDS from frequent content words in JD
+  const words=lower.split(/\W+/).filter(w=>w.length>3&&!STOPWORDS.has(w));
+  const freq={};words.forEach(w=>freq[w]=(freq[w]||0)+1);
+  const jdWords=new Set(Object.entries(freq).filter(([,f])=>f>=2).map(([w])=>w).slice(0,60));
+  // Also add skill tokens
+  Object.keys(jdSkillMap).forEach(s=>s.split(/\s+/).forEach(t=>jdWords.add(t)));
+
+  // Extract YoE requirement
+  const yoeMatch=text.match(/(\d+)\+?\s*(?:to|-)\s*(\d+)?\s*years?(?:\s+of)?\s+(?:experience|exp)/i)
+    || text.match(/(\d+)\+\s*years?(?:\s+of)?\s+(?:experience|exp)/i);
+  let minYoe=0,maxYoe=99;
+  if(yoeMatch){minYoe=parseInt(yoeMatch[1]);maxYoe=yoeMatch[2]?parseInt(yoeMatch[2]):minYoe+4;}
+
+  // Detect location from JD
+  const jdLower=lower;
+  const indiaWords=['india','bangalore','bengaluru','pune','hyderabad','noida','mumbai','delhi','gurgaon','chennai'];
+  const isIndiaRole=indiaWords.some(c=>jdLower.includes(c));
+  const preferredCities=new Set();
+  ['bangalore','bengaluru','pune','hyderabad','noida','mumbai','delhi','gurgaon','gurugram','chennai','kolkata','ahmedabad','greater noida'].forEach(c=>{if(jdLower.includes(c))preferredCities.add(c);});
+
+  // Consulting exclusion: only flag if JD explicitly mentions product company preference
+  const antiConsulting=lower.includes('product company')||lower.includes('product-company')||lower.includes('startup')||lower.includes('not from consulting');
+
+  const maxSkillW=Math.max(...Object.values(jdSkillMap))*3+(Object.values(jdSkillMap).sort((a,b)=>b-a)[3]||1.0)+(Object.values(jdSkillMap).sort((a,b)=>b-a)[4]||1.0);
+
+  return {domainKey:bestDomain,domain:dom,skillMap:jdSkillMap,jdWords,minYoe,maxYoe,isIndiaRole,preferredCities,antiConsulting,maxSkillW:Math.max(maxSkillW,5)};
+}
+
+// ════════════════════════════════════════════════════════════
+// CSV PARSER
+// ════════════════════════════════════════════════════════════
+const COL_ALIASES={
+  name:['name','full_name','anonymized_name','candidate_name','fullname','applicant_name','candidate name','full name','first_name'],
+  id:['candidate_id','id','cand_id','candidateid','candidate id','applicant_id'],
+  title:['current_title','title','role','position','job_title','designation','current role','job title'],
+  yoe:['years_of_experience','yoe','experience_years','experience','years experience','total_experience','exp_years'],
+  company:['current_company','company','employer','organization','current employer','organisation'],
+  location:['location','city','current_location','city_state'],
+  country:['country','country_code'],
+  skills:['skills','skill_list','technical_skills','key_skills','competencies'],
+  summary:['summary','bio','about','profile_summary','description','candidate_summary','overview'],
+  open_to_work:['open_to_work','open_to_work_flag','available','actively_looking','open to work'],
+  response_rate:['response_rate','recruiter_response_rate','rr'],
+  notice_period:['notice_period_days','notice_period','notice','notice_days'],
+  github_score:['github_activity_score','github_score','github'],
+  linkedin:['linkedin_connected','linkedin'],
+  verified_email:['verified_email'],
+  verified_phone:['verified_phone'],
+  last_active:['last_active_date','last_active','last_login','last_seen'],
+  interview_rate:['interview_completion_rate','interview_rate','icr'],
+  profile_complete:['profile_completeness_score','profile_complete','completeness'],
+  willing_relocate:['willing_to_relocate','relocate','relocation'],
+  work_mode:['preferred_work_mode','work_mode','work_type','mode'],
+  education:['education','degree','qualification'],
+  career_history:['career_history','work_history','experience_history'],
+};
+
+function detectColumns(headers){
+  const map={};
+  const hLower=headers.map(h=>h.toLowerCase().trim().replace(/\s+/g,'_'));
+  for(const [field,aliases] of Object.entries(COL_ALIASES)){
+    for(const alias of aliases){
+      const idx=hLower.indexOf(alias.replace(/\s+/g,'_'));
+      if(idx>=0){map[field]=headers[idx];break;}
+    }
+  }
+  return map;
+}
+
+function parseCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return[];
+  const headers=splitCSVRow(lines[0]);
+  const colMap=detectColumns(headers);
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const vals=splitCSVRow(lines[i]);
+    if(!vals.length||vals.every(v=>!v.trim())) continue;
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=vals[i]||'');
+    rows.push(csvRowToCandidate(obj,colMap,i));
+  }
+  return{rows,colMap,headers};
+}
+
+function splitCSVRow(line){
+  const cells=[];let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){inQ=!inQ;}
+    else if(c===','&&!inQ){cells.push(cur.trim());cur='';}
+    else cur+=c;
+  }
+  cells.push(cur.trim());
+  return cells.map(c=>c.replace(/^"|"$/g,'').replace(/""/g,'"'));
+}
+
+let csvColMap={},csvHeaders=[];
+function csvRowToCandidate(obj,colMap,idx){
+  const g=(f)=>(colMap[f]?obj[colMap[f]]||'':'');
+  const gn=(f,def=0)=>{const v=parseFloat(g(f));return isNaN(v)?def:v;};
+  const gb=(f)=>{const v=g(f).toLowerCase();return v==='true'||v==='yes'||v==='1'||v==='y';};
+  const yoe=gn('yoe',0)||gn('experience',0);
+  const skillsRaw=g('skills');
+  const skillObjs=skillsRaw?skillsRaw.split(/[;,|]+/).map(s=>s.trim()).filter(Boolean).map(s=>({name:s,proficiency:'intermediate',endorsements:0,duration_months:0})):[];
+  const cid=g('id')||`CAND_${String(idx).padStart(7,'0')}`;
+  return{
+    candidate_id:cid,
+    profile:{
+      name:g('name'),
+      current_title:g('title'),
+      years_of_experience:yoe,
+      current_company:g('company'),
+      location:g('location'),
+      country:(g('country')||'').toLowerCase()||'india',
+      summary:g('summary'),
+      headline:g('title'),
+    },
+    career_history:parseCareerHistory(g('career_history'),g('company'),g('title'),yoe),
+    education:parseEducation(g('education')),
+    skills:skillObjs,
+    redrob_signals:{
+      open_to_work_flag:gb('open_to_work'),
+      recruiter_response_rate:gn('response_rate',0.6),
+      notice_period_days:gn('notice_period',30),
+      github_activity_score:gn('github_score',-1),
+      linkedin_connected:gb('linkedin'),
+      verified_email:gb('verified_email'),
+      verified_phone:gb('verified_phone'),
+      last_active_date:g('last_active'),
+      interview_completion_rate:gn('interview_rate',0.7),
+      profile_completeness_score:gn('profile_complete',70),
+      willing_to_relocate:gb('willing_relocate'),
+      preferred_work_mode:g('work_mode')||'hybrid',
+      avg_response_time_hours:24,
+      saved_by_recruiters_30d:0,
+      profile_views_received_30d:0,
+      search_appearance_30d:0,
+      skill_assessment_scores:{},
+    },
+  };
+}
+
+function parseCareerHistory(raw,company,title,yoe){
+  if(!raw&&!company) return[];
+  if(raw){
+    // Try JSON parse
+    try{const p=JSON.parse(raw);if(Array.isArray(p))return p;}catch(e){}
+    // Try pipe-separated "Title@Company,Title@Company"
+    const entries=raw.split('|').map(e=>e.trim()).filter(Boolean);
+    if(entries.length>1){
+      return entries.map(e=>{const[t,c]=e.split('@');return{title:(t||'').trim(),company:(c||'').trim(),duration_months:0};});
+    }
+  }
+  // Fallback: single entry from company+title
+  return[{title:title||'',company:company||'',duration_months:Math.round((yoe||0)*12),industry:'',description:''}];
+}
+
+function parseEducation(raw){
+  if(!raw) return[];
+  try{const p=JSON.parse(raw);if(Array.isArray(p))return p;}catch(e){}
+  return[{degree:raw,end_year:null}];
+}
+
+// ════════════════════════════════════════════════════════════
+// SCORER  (uses jdConfig, adapts to any domain)
+// ════════════════════════════════════════════════════════════
+function detectHoneypot(c){
+  const yoe=c.profile.years_of_experience||0;
+  for(const e of c.education||[]){
+    if(!e.end_year) continue;
+    if(e.end_year>TODAY.getFullYear()||e.end_year<1960) return true;
+    if(yoe>(TODAY.getFullYear()-e.end_year+2)) return true;
+  }
+  const totalM=(c.career_history||[]).reduce((s,j)=>s+(j.duration_months||0),0);
+  if(totalM>(yoe+5)*12&&totalM>0) return true;
+  for(const j of c.career_history||[]){
+    if(!j.start_date) continue;
+    const sy=parseInt((j.start_date+'').substring(0,4));
+    if(sy>TODAY.getFullYear()||sy<1970) return true;
+  }
+  return false;
+}
+
+function scoreCandidate(c, weights){
+  if(detectHoneypot(c))
+    return{final:0,tier:'honeypot',tierLabel:'Honeypot',matched:[],flags:['honeypot'],subs:{role:0,tech:0,career:0,semantic:0,behav:0,loc:0}};
+
+  const cfg=jdConfig;
+  const dom=cfg.domain;
+  const profile=c.profile, career=c.career_history||[], skills=c.skills||[], sig=c.redrob_signals||{};
+  const title=(profile.current_title||'').toLowerCase();
+  const summary=(profile.summary||'').toLowerCase();
+  const headline=(profile.headline||'').toLowerCase();
+  const yoe=profile.years_of_experience||0;
+  const country=(profile.country||'').toLowerCase();
+  const location=(profile.location||'').toLowerCase();
+
+  // Career analysis
+  let careerTexts=[],consultingM=0,totalM=0,prodHits=0,prodM=0,isPureResearch=career.length>0;
+  const companyNames=[],careerTitles=[];
+  const PROD_KW=['production','deployed','shipped','at scale','real users','live','online','latency','throughput'];
+
+  for(const j of career){
+    const jt=(j.title||'').toLowerCase(),jco=(j.company||'').toLowerCase().trim();
+    const jd=(j.description||'').toLowerCase(),ji=(j.industry||'').toLowerCase(),m=j.duration_months||0;
+    careerTexts.push(jd);careerTitles.push(jt);companyNames.push(jco);totalM+=m;
+    const isCons=dom.consulting.some(cg=>jco.includes(cg));
+    if(isCons) consultingM+=m;
+    PROD_KW.forEach(kw=>{if(jd.includes(kw)) prodHits=Math.min(prodHits+1,16);});
+    const isStrongRole=dom.strong_titles.some(a=>jt.includes(a));
+    if(isStrongRole) prodM+=m;
+    const isRes=['research scientist','research engineer','phd','professor','academic'].some(r=>jt.includes(r));
+    if(!isRes) isPureResearch=false;
+  }
+
+  const fullCareer=careerTexts.join(' ');
+  const skillsText=skills.map(s=>s.name.toLowerCase()).join(' ');
+  const allTitles=[title,...careerTitles];
+  const fullText=`${summary} ${headline} ${fullCareer} ${skillsText}`;
+
+  // ── Role Legitimacy
+  let roleTier='unknown',roleScore=0;
+  for(const t of allTitles){
+    if(dom.strong_titles.some(a=>t.includes(a))){roleScore=1.0;roleTier='strong';break;}
+  }
+  if(roleTier==='unknown'){
+    const domHits=cfg.domain.keywords.filter(k=>summary.includes(k)||headline.includes(k)).length;
+    for(const t of allTitles){
+      if(dom.mod_titles.some(m=>t.includes(m))){roleScore=domHits>=2?0.75:0.5;roleTier='moderate';break;}
+    }
+  }
+  if(roleTier==='unknown'){
+    const domHits=cfg.domain.keywords.filter(k=>summary.includes(k)||headline.includes(k)).length;
+    for(const t of allTitles){
+      if(dom.non_titles.some(b=>t.includes(b))){roleScore=domHits>=3?0.25:0.06;roleTier=domHits>=3?'adjacent':'excluded';break;}
+    }
+  }
+  if(roleTier==='unknown'){
+    const domHits=cfg.domain.keywords.filter(k=>summary.includes(k)||headline.includes(k)).length;
+    roleScore=Math.min(0.6,0.15+domHits*0.1);roleTier=domHits>=4?'moderate':'adjacent';
+  }
+
+  // ── Skill Score
+  const matchedSkills=[];let skillScore=0;
+  const groupBest={};
+  const skAssess=sig.skill_assessment_scores||{};
+  for(const sk of skills){
+    const nm=sk.name.toLowerCase().trim();
+    const wt=cfg.skillMap[nm];
+    if(wt===undefined) continue;
+    const prof=PROF_W[sk.proficiency]||0.5;
+    const end=Math.min(0.3,Math.log1p(sk.endorsements||0)/15);
+    const dur=Math.min(0.2,(sk.duration_months||0)/60);
+    const ass=((skAssess[sk.name]||0)/100)*0.2;
+    const raw=prof*(1+end+dur+ass);
+    groupBest[wt]=Math.max(groupBest[wt]||0,Math.min(1.0,raw));
+    matchedSkills.push(sk.name);
+  }
+  for(const[wt,best] of Object.entries(groupBest)) skillScore+=parseFloat(wt)*best;
+  skillScore=Math.min(1.0,skillScore/cfg.maxSkillW);
+
+  // ── Career Quality
+  const yoeMin=cfg.minYoe||4,yoeMax=cfg.maxYoe||99;
+  const yoeIdeal=yoeMin+Math.round((yoeMax-yoeMin)*0.5);
+  const yoeS=yoe>=yoeIdeal-1&&yoe<=yoeIdeal+2?1.0:yoe>=yoeMin&&yoe<yoeIdeal?0.75:yoe>yoeIdeal+2&&yoe<=yoeIdeal+5?0.7:yoe>=yoeMin-1&&yoe<yoeMin?0.5:0.3;
+  const companyS=1.0-(totalM?consultingM/totalM:0.3)*0.6;
+  const prodS=Math.min(1.0,prodHits/12);
+  const domainM=Math.min(1.0,(prodM/Math.max(totalM,1))*2);
+  const careerScore=(0.30*yoeS+0.25*companyS+0.25*prodS+0.20*domainM)*(isPureResearch?0.55:1.0);
+
+  // ── Semantic Fit
+  const words=new Set(fullText.split(/\s+/));
+  let posCount=0;cfg.jdWords.forEach(w=>{if(words.has(w))posCount++;});
+  const semanticScore=Math.min(1.0,posCount/Math.max(cfg.jdWords.size*0.25,8));
+
+  // ── Behavioral
+  const la=sig.last_active_date||'';
+  let rec=0.4;
+  if(la){const di=Math.floor((TODAY-new Date(la))/864e5);rec=di<=30?1:di<=90?0.8:di<=180?0.5:di<=365?0.3:0.1;}
+  const openW=sig.open_to_work_flag?1.0:0.4;
+  const rr=sig.recruiter_response_rate||0.5;
+  const arh=sig.avg_response_time_hours||48;
+  const rtS=arh<=4?1:arh<=24?0.85:arh<=72?0.65:arh<=168?0.45:0.2;
+  const saved=sig.saved_by_recruiters_30d||0,views=sig.profile_views_received_30d||0;
+  const mktS=Math.min(1,(Math.log1p(saved)/4+Math.log1p(views)/6)/2*1.5);
+  const icr=sig.interview_completion_rate||0.7;
+  const comp=(sig.profile_completeness_score||70)/100;
+  const ver=((sig.verified_email?1:0)+(sig.verified_phone?1:0)+(sig.linkedin_connected?1:0))/3;
+  const gh=Math.max(0,sig.github_activity_score||0)/100;
+  const behavScore=0.20*rec+0.15*openW+0.20*rr+0.10*rtS+0.15*mktS+0.10*icr+0.10*(comp*0.4+ver*0.4+gh*0.2);
+
+  // ── Location
+  const reloc=sig.willing_to_relocate||false,notice=sig.notice_period_days||60,mode=sig.preferred_work_mode||'hybrid';
+  let cityS=0.7;
+  if(cfg.isIndiaRole){
+    const prefCities=[...cfg.preferredCities];
+    if(prefCities.length===0) cityS=country==='india'?1.0:(reloc?0.4:0.15);
+    else cityS=prefCities.some(ci=>location.includes(ci))?1.0:(country==='india'?0.75:(reloc?0.35:0.1));
+  } else {
+    cityS=0.8;
+  }
+  const notS=notice<=15?1:notice<=30?0.9:notice<=45?0.7:notice<=60?0.55:notice<=90?0.4:0.25;
+  const locScore=0.55*cityS+0.35*notS+0.10*(mode==='hybrid'||mode==='flexible'?1:0.75);
+
+  const subs={role:roleScore,tech:skillScore,career:careerScore,semantic:semanticScore,behav:behavScore,loc:locScore};
+  const w=weights;
+  let composite=w.role*roleScore+w.tech*skillScore+w.career*careerScore+w.semantic*semanticScore+w.behav*behavScore+w.loc*locScore;
+
+  const flags=[];let mult=1.0;
+  if(roleTier==='excluded'){mult*=0.05;flags.push('role_mismatch');}
+  if(cfg.antiConsulting&&companyNames.length&&companyNames.every(cn=>dom.consulting.some(cg=>cn.includes(cg)))){mult*=0.35;flags.push('pure_consulting');}
+  if(cfg.isIndiaRole&&country!=='india'&&!reloc){mult*=0.25;flags.push('outside_preferred_location');}
+
+  const tierLabel=roleTier==='strong'?'Strong match':roleTier==='moderate'?'Moderate':roleTier==='adjacent'?'Adjacent':'Excluded';
+  return{final:composite*mult,tier:roleTier,tierLabel,matched:matchedSkills,flags,subs};
+}
+
+// ════════════════════════════════════════════════════════════
+// UI STATE
+// ════════════════════════════════════════════════════════════
+let rawCandidates=[],allResults=[],sortCol='rank',sortAsc=true,selectedId=null;
+
+const DIMS=[
+  {key:'role',    label:'Role legitimacy', def:20},
+  {key:'tech',    label:'Technical skills',def:30},
+  {key:'career',  label:'Career quality',  def:20},
+  {key:'semantic',label:'Semantic fit',    def:15},
+  {key:'behav',   label:'Behavioral',      def:10},
+  {key:'loc',     label:'Location',        def:5},
+];
+
+function buildSliders(){
+  const el=document.getElementById('sliders');
+  el.innerHTML=DIMS.map(d=>`
+    <div class="slider-row">
+      <div class="slider-meta"><span>${d.label}</span><span id="pct_${d.key}">${d.def}%</span></div>
+      <input type="range" min="0" max="70" step="1" value="${d.def}" id="sl_${d.key}" oninput="slUp('${d.key}')">
+    </div>`).join('');
+  updateWtStatus();
+}
+
+function slUp(k){document.getElementById('pct_'+k).textContent=document.getElementById('sl_'+k).value+'%';updateWtStatus();if(allResults.length)applyFilter();}
+function resetWeights(){DIMS.forEach(d=>{document.getElementById('sl_'+d.key).value=d.def;document.getElementById('pct_'+d.key).textContent=d.def+'%';});updateWtStatus();}
+function updateWtStatus(){
+  const t=DIMS.reduce((s,d)=>s+parseInt(document.getElementById('sl_'+d.key).value),0);
+  const el=document.getElementById('wtStatus');
+  el.textContent='Total: '+t+'%'+(t===100?' ✓':' — must sum to 100%');
+  el.className='wt-status '+(t===100?'wt-ok':'wt-bad');
+}
+function getWeights(){
+  const raw={};DIMS.forEach(d=>raw[d.key]=parseInt(document.getElementById('sl_'+d.key).value));
+  const total=Object.values(raw).reduce((a,b)=>a+b,0)||100;
+  const w={};DIMS.forEach(d=>w[d.key]=raw[d.key]/total);
+  return w;
+}
+
+buildSliders();
+
+// Step nav
+function goStep(n){
+  [1,2,3,4].forEach(i=>{
+    document.getElementById('step'+i).classList.toggle('hidden',i!==n);
+  });
+  ['pill1','pill2','pill3','pill4'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    el.className='step-pill'+(i+1===n?' active':i+1<n?' done':'');
+  });
+  if(n===3) buildRulesPreview();
+}
+
+// ── JD step
+function jdChanged(){
+  const txt=document.getElementById('jdText').value.trim();
+  if(txt.length<30){
+    document.getElementById('jdParsed').classList.add('hidden');
+    document.getElementById('nextTo2').disabled=true;
+    document.getElementById('domainBadge').textContent='No JD yet';
+    jdConfig=null;return;
+  }
+  jdConfig=parseJD(txt);
+  showJDParsed();
+  document.getElementById('nextTo2').disabled=false;
+}
+
+function loadJDFile(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>{document.getElementById('jdText').value=ev.target.result;jdChanged();};r.readAsText(f);
+}
+
+function showJDParsed(){
+  const cfg=jdConfig;
+  document.getElementById('jdParsed').classList.remove('hidden');
+  document.getElementById('jdDomainTag').textContent=cfg.domain.icon+' '+cfg.domain.label;
+  document.getElementById('jdYoeReq').textContent=cfg.minYoe>0?` · ${cfg.minYoe}${cfg.maxYoe<99?'–'+cfg.maxYoe:'+'} years exp preferred`:'';
+  document.getElementById('domainBadge').textContent=cfg.domain.label;
+  const chips=document.getElementById('jdChips');
+  const topSkills=Object.entries(cfg.skillMap).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([k])=>k);
+  const extraWords=[...cfg.jdWords].filter(w=>!topSkills.some(s=>s.includes(w))).slice(0,10);
+  chips.innerHTML=topSkills.map(s=>`<span class="chip hi">${s}</span>`).join('')+extraWords.map(w=>`<span class="chip">${w}</span>`).join('');
+}
+
+// ── Candidate step
+const dropZone=document.getElementById('dropZone');
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag');if(e.dataTransfer.files[0])loadCandFile({target:{files:e.dataTransfer.files}});});
+
+function loadCandFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const txt=ev.target.result;
+    rawCandidates=[];
+    if(file.name.endsWith('.csv')){
+      const result=parseCSV(txt);
+      rawCandidates=result.rows;
+      csvColMap=result.colMap;
+      csvHeaders=result.headers;
+      showCSVMapping(csvHeaders,csvColMap);
+    } else {
+      document.getElementById('csvMapping').classList.add('hidden');
+      document.getElementById('noMappingMsg').textContent='Not a CSV file — column mapping not applicable.';
+      document.getElementById('noMappingMsg').style.display='block';
+      if(file.name.endsWith('.json')){
+        try{const d=JSON.parse(txt);rawCandidates=Array.isArray(d)?d:[d];}catch(err){alert('Invalid JSON: '+err.message);return;}
+      } else {
+        for(const l of txt.split('\n')){const t=l.trim();if(t)try{rawCandidates.push(JSON.parse(t));}catch(err){}}
+      }
+    }
+    const loaded=document.getElementById('candLoaded');
+    loaded.classList.remove('hidden');
+    loaded.textContent=`${file.name} · ${rawCandidates.length.toLocaleString()} candidates loaded`;
+    document.getElementById('nextTo3').disabled=rawCandidates.length===0;
+  };
+  reader.readAsText(file);
+}
+
+function showCSVMapping(headers,colMap){
+  document.getElementById('noMappingMsg').style.display='none';
+  document.getElementById('csvMapping').classList.remove('hidden');
+  const reverseMap={};
+  for(const[field,col] of Object.entries(colMap)) reverseMap[col]=field;
+  const grid=document.getElementById('mappingGrid');
+  const importantFields=['id','title','yoe','company','location','country','skills','summary','open_to_work','notice_period','response_rate'];
+  grid.innerHTML=importantFields.map(f=>{
+    const detected=colMap[f]||'';
+    return`<div style="margin-bottom:6px">
+      <label class="field-label">${f.replace(/_/g,' ')}</label>
+      <select onchange="updateMapping('${f}',this.value)" style="width:100%;padding:5px 7px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+        <option value="">— not mapped —</option>
+        ${headers.map(h=>`<option value="${h}" ${h===detected?'selected':''}>${h}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function updateMapping(field,col){
+  if(col) csvColMap[field]=col; else delete csvColMap[field];
+  // Re-parse with updated mapping
+  // Read the raw file again isn't possible without re-upload; adjust existing candidates
+  rawCandidates=rawCandidates.map((c,i)=>{
+    const dummy={};csvHeaders.forEach(h=>dummy[h]=c._raw?c._raw[h]:'');
+    return c; // mapping update takes effect on next full run
+  });
+}
+
+// ── Rules preview
+function buildRulesPreview(){
+  if(!jdConfig){document.getElementById('rulesPreview').innerHTML='<span style="color:var(--text3)">Parse a JD first to see scoring rules.</span>';return;}
+  const cfg=jdConfig;
+  const dom=cfg.domain;
+  document.getElementById('rulesPreview').innerHTML=`
+    <b>Domain:</b> ${dom.icon} ${dom.label}<br>
+    <b>Strong titles:</b> ${dom.strong_titles.slice(0,4).join(', ')}…<br>
+    <b>Excluded titles:</b> ${dom.non_titles.slice(0,3).join(', ')}…<br>
+    <b>Top matched skills:</b> ${Object.keys(cfg.skillMap).slice(0,5).join(', ')}<br>
+    <b>YoE target:</b> ${cfg.minYoe>0?cfg.minYoe+'–'+(cfg.maxYoe<99?cfg.maxYoe:'∞')+' years':'Auto'}<br>
+    <b>Location:</b> ${cfg.isIndiaRole?'India-preferred':'No preference'}<br>
+    <b>Penalise consulting:</b> ${cfg.antiConsulting?'Yes (0.35×)':'No'}<br>
+    <hr class="divider">
+    <b>Red-flag multipliers:</b><br>
+    Role mismatch: 0.05×<br>
+    ${cfg.antiConsulting?'Pure consulting: 0.35×<br>':''}
+    ${cfg.isIndiaRole?'Outside India (no reloc): 0.25×<br>':''}
+    Impossible timeline: 0×
+  `;
+}
+
+// ── Run
+async function runRanking(){
+  if(!rawCandidates.length){alert('Upload a candidates file first.');return;}
+  if(!jdConfig){alert('Parse a JD first (Step 1).');return;}
+  allResults=[];selectedId=null;
+  document.getElementById('progWrap').classList.remove('hidden');
+  document.getElementById('progFill').style.width='0%';
+  const weights=getWeights();
+  const total=rawCandidates.length,BATCH=400;let i=0;
+  async function batch(){
+    const end=Math.min(i+BATCH,total);
+    for(;i<end;i++){
+      const c=rawCandidates[i],r=scoreCandidate(c,weights),sig=c.redrob_signals||{};
+      allResults.push({
+        id:c.candidate_id,score:r.final,tier:r.tier,tierLabel:r.tierLabel,
+        matched:r.matched,flags:r.flags,subs:r.subs,
+        name:c.profile.name||c.profile.full_name||c.profile.anonymized_name||(c.profile.first_name?`${c.profile.first_name} ${c.profile.last_name||''}`.trim():'')||c.name||'',
+        title:c.profile.current_title||'',yoe:c.profile.years_of_experience||0,
+        location:c.profile.location||'',company:c.profile.current_company||'',
+        otw:sig.open_to_work_flag||false,rr:sig.recruiter_response_rate||0,
+        notice:sig.notice_period_days||60,country:(c.profile.country||'').toLowerCase(),
+        _raw:c,
+      });
+    }
+    document.getElementById('progFill').style.width=(i/total*100).toFixed(1)+'%';
+    document.getElementById('runStatus').textContent=`Scoring ${i.toLocaleString()} / ${total.toLocaleString()}…`;
+    if(i<total){await new Promise(r=>setTimeout(r,0));return batch();}
+  }
+  await batch();
+  allResults.sort((a,b)=>b.score-a.score);
+  allResults.forEach((r,i)=>r.rank=i+1);
+  document.getElementById('progWrap').classList.add('hidden');
+  document.getElementById('runStatus').textContent=`Done — ${allResults.length.toLocaleString()} candidates ranked.`;
+  goStep(4);renderStats();applyFilter();
+}
+
+function recompute(r){
+  const w=getWeights();
+  let s=r.subs.role*w.role+r.subs.tech*w.tech+r.subs.career*w.career+r.subs.semantic*w.semantic+r.subs.behav*w.behav+r.subs.loc*w.loc;
+  let m=1;
+  if(r.flags.includes('honeypot'))return 0;
+  if(r.flags.includes('role_mismatch'))m*=0.05;
+  if(r.flags.includes('pure_consulting'))m*=0.35;
+  if(r.flags.includes('outside_preferred_location'))m*=0.25;
+  return s*m;
+}
+
+// ── Results
+function renderStats(){
+  const honeypots=allResults.filter(r=>r.tier==='honeypot').length;
+  const strong=allResults.filter(r=>r.tier==='strong').length;
+  const top100otw=allResults.slice(0,Math.min(100,allResults.length)).filter(r=>r.otw).length;
+  const excluded=allResults.filter(r=>r.flags.length>0&&r.tier!=='honeypot').length;
+  document.getElementById('statsGrid').innerHTML=`
+    <div class="stat"><div class="stat-label">Total ranked</div><div class="stat-val">${allResults.length.toLocaleString()}</div></div>
+    <div class="stat"><div class="stat-label">Strong match</div><div class="stat-val">${strong.toLocaleString()}</div></div>
+    <div class="stat"><div class="stat-label">Red-flagged</div><div class="stat-val">${excluded+honeypots}</div></div>
+    <div class="stat"><div class="stat-label">Top-100 open</div><div class="stat-val">${top100otw}</div></div>`;
+}
+
+function applyFilter(){
+  const txt=(document.getElementById('filterText').value||'').toLowerCase();
+  const tierF=document.getElementById('filterTier').value;
+  const otwF=document.getElementById('filterOTW').value;
+  let filtered=allResults.map(r=>({...r,ds:recompute(r)}));
+  filtered.sort((a,b)=>b.ds-a.ds);
+  filtered.forEach((r,i)=>r.dr=i+1);
+  if(txt) filtered=filtered.filter(r=>r.title.toLowerCase().includes(txt)||r.company.toLowerCase().includes(txt));
+  if(tierF) filtered=filtered.filter(r=>r.tier===tierF||(tierF==='excluded'&&(r.tier==='honeypot'||r.flags.length>0)));
+  if(otwF==='1') filtered=filtered.filter(r=>r.otw);
+  if(sortCol!=='rank') filtered.sort((a,b)=>{const va=a[sortCol]||0,vb=b[sortCol]||0;return sortAsc?(va>vb?1:-1):(va<vb?1:-1);});
+  renderTable(filtered.slice(0,300));
+}
+
+function sortBy(col){
+  if(sortCol===col)sortAsc=!sortAsc;else{sortCol=col;sortAsc=col==='rank';}
+  document.querySelectorAll('th span[id^="s_"]').forEach(el=>el.textContent='');
+  const el=document.getElementById('s_'+col);if(el)el.textContent=sortAsc?' ↑':' ↓';
+  applyFilter();
+}
+
+function tierBadge(tier){
+  if(tier==='strong') return '<span class="badge b-green">Strong</span>';
+  if(tier==='moderate') return '<span class="badge b-blue">Mod</span>';
+  if(tier==='adjacent') return '<span class="badge b-amber">Adj</span>';
+  if(tier==='excluded') return '<span class="badge b-red">Out</span>';
+  if(tier==='honeypot') return '<span class="badge b-red">⚠</span>';
+  return '';
+}
+
+function renderTable(rows){
+  const tbody=document.getElementById('resultsBody');
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text3)">No candidates match filters.</td></tr>';return;}
+  tbody.innerHTML=rows.map(r=>`<tr onclick="selectRow('${r.id}')" class="${r.id===selectedId?'sel':''}">
+    <td>${r.dr}</td>
+    <td style="font-family:monospace;font-size:11px">${r.id}</td>
+    <td title="${r.name}">${r.name?(r.name.length>18?r.name.slice(0,18)+'…':r.name):'<span style="color:var(--text3)">—</span>'}</td>
+    <td title="${r.title}">${r.title.length>32?r.title.slice(0,32)+'…':r.title}</td>
+    <td>${r.yoe.toFixed(1)}</td>
+    <td style="color:var(--text2)" title="${r.company}">${r.company.length>22?r.company.slice(0,22)+'…':r.company||'—'}</td>
+    <td><strong>${r.ds.toFixed(3)}</strong></td>
+    <td style="text-align:center">${tierBadge(r.tier)}</td>
+    <td style="text-align:center">${r.otw?'✓':'—'}</td>
+  </tr>`).join('');
+}
+
+function selectRow(id){
+  if(selectedId===id){selectedId=null;document.getElementById('detailPanel').classList.add('hidden');applyFilter();return;}
+  selectedId=id;applyFilter();
+  const r=allResults.find(x=>x.id===id);if(!r)return;
+  const ds=recompute(r);
+  const c=r._raw,sig=c.redrob_signals||{};
+  const subLabels={role:'Role legitimacy',tech:'Technical skills',career:'Career quality',semantic:'Semantic fit',behav:'Behavioral',loc:'Location'};
+  const bars=Object.entries(r.subs).map(([k,v])=>`
+    <div class="bar-row">
+      <div class="bar-meta"><span>${subLabels[k]}</span><span>${(v*100).toFixed(1)}%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,v*100).toFixed(1)}%"></div></div>
+    </div>`).join('');
+  const companies=(c.career_history||[]).map(j=>j.company).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5).join(', ');
+  const flagsHtml=r.flags.length?r.flags.map(f=>`<span class="flag-tag">${f.replace(/_/g,' ')}</span>`).join(''):'<span style="font-size:12px;color:var(--text3)">None</span>';
+  const topSkills=r.matched.slice(0,10).map(s=>`<span class="tag">${s}</span>`).join('');
+  const panel=document.getElementById('detailPanel');
+  panel.classList.remove('hidden');
+  panel.innerHTML=`
+    <div class="detail-head">
+      <div>
+        ${r.name?`<div class="detail-name">${r.name}</div><div class="detail-sub" style="margin-top:2px;font-size:14px;color:var(--text)">${r.title||'—'}</div>`:`<div class="detail-name">${r.title||'—'}</div>`}
+        <div class="detail-sub">${r.yoe.toFixed(1)}y · ${r.location||'?'} · ${r.company||'?'}</div>
+        <div style="margin-top:7px">${tierBadge(r.tier)} <span style="font-size:12px;color:var(--text2)"> ${r.tierLabel}</span></div>
+      </div>
+      <div>
+        <div class="score-big">${ds.toFixed(3)}</div>
+        <div class="score-lbl">composite score</div>
+        <div style="font-family:monospace;font-size:11px;color:var(--text3);text-align:right;margin-top:3px">${r.id}</div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <div class="sec-title">Score breakdown</div>${bars}
+        <div style="margin-top:12px"><div class="sec-title">Red flags</div>${flagsHtml}</div>
+        <div style="margin-top:12px"><div class="sec-title">Matched skills</div>
+          <div class="tags">${topSkills||'<span style="font-size:12px;color:var(--text3)">None matched</span>'}</div>
+        </div>
+      </div>
+      <div>
+        <div class="sec-title">Signals &amp; logistics</div>
+        <div class="info-row"><span class="info-lbl">Open to work</span><span>${sig.open_to_work_flag?'Yes':'No'}</span></div>
+        <div class="info-row"><span class="info-lbl">Response rate</span><span>${((sig.recruiter_response_rate||0)*100).toFixed(0)}%</span></div>
+        <div class="info-row"><span class="info-lbl">Notice period</span><span>${sig.notice_period_days||'?'} days</span></div>
+        <div class="info-row"><span class="info-lbl">Last active</span><span>${sig.last_active_date||'?'}</span></div>
+        <div class="info-row"><span class="info-lbl">Interview completion</span><span>${((sig.interview_completion_rate||0)*100).toFixed(0)}%</span></div>
+        <div class="info-row"><span class="info-lbl">Work mode</span><span>${sig.preferred_work_mode||'?'}</span></div>
+        <div class="info-row"><span class="info-lbl">Willing to relocate</span><span>${sig.willing_to_relocate?'Yes':'No'}</span></div>
+        <div class="info-row"><span class="info-lbl">GitHub score</span><span>${sig.github_activity_score>=0?sig.github_activity_score:'Not linked'}</span></div>
+        <div class="info-row"><span class="info-lbl">Career companies</span><span style="font-size:11px">${companies||r.company||'—'}</span></div>
+      </div>
+    </div>`;
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function exportCSV(){
+  const weights=getWeights();
+  const ranked=allResults.map(r=>({...r,ds:recompute(r)}))
+    .filter(r=>!r.flags.includes('honeypot'))
+    .sort((a,b)=>b.ds-a.ds).slice(0,100);
+  const domain=jdConfig?jdConfig.domain.label:'Unknown role';
+  const lines=['candidate_id,rank,score,tier,reasoning'];
+  ranked.forEach((r,i)=>{
+    const reason=r.flags.includes('role_mismatch')?`${r.title} — role domain mismatch for ${domain} JD`:
+      r.flags.includes('pure_consulting')?`${r.title} (${r.yoe.toFixed(1)}y) — entire career at consulting firms`:
+      `${r.tierLabel} · ${r.title} (${r.yoe.toFixed(1)}y) · ${r.company||'?'} · score ${r.ds.toFixed(3)}${r.otw?' · open to work':''}`;
+    lines.push(`${r.id},${i+1},${r.ds.toFixed(4)},${r.tier},"${reason.replace(/"/g,'""')}"`);
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download='ranked_candidates.csv';a.click();
+}
+</script>
+</body>
+</html>
